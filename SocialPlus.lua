@@ -2416,16 +2416,25 @@ function SocialPlus_RemoveCurrentFriend()
             end
         end
 
-        -- Fallback to legacy RemoveFriend
+            -- Fallback to legacy RemoveFriend
         if not ok and RemoveFriend then
-            if name and name ~= "" then
-                ok = pcall(RemoveFriend, name)
+           if name and name ~= "" then
+            ok = pcall(RemoveFriend, name)
             else
-                ok = pcall(RemoveFriend, idx)
-            end
+            ok = pcall(RemoveFriend, idx)
         end
+    end
 
-        FG_Debug("WOW remove result", tostring(ok))
+    FG_Debug("WOW remove result", tostring(ok))
+
+    -- ✅ Chat confirmation for non-BNet friends
+    if ok then
+        -- Use the same logic as the menu: prefer full char-realm if we can build it
+        local full = SocialPlus_GetFullCharacterName(cf) or name or "Unknown"
+        if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffff00Successfully deleted "..full..".|r")
+        end
+    end
 
     elseif cf.buttonType == FRIENDS_BUTTON_TYPE_BNET then
         -- BNet friend: show confirmation popup that requires typing "YES."
@@ -2520,7 +2529,7 @@ end
 
 frame:SetScript("OnEvent", function(self,event,...)
 	if event == "PLAYER_LOGIN" then
-		FG_InitFactionIcon()  -- <-- add this line
+		FG_InitFactionIcon()  --MoP Classic: init faction icons 
 
 		Hook("FriendsList_Update", SocialPlus_Update, true)
 		--if other addons have hooked this, we should too
