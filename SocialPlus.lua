@@ -16,9 +16,6 @@ local function FG_Debug(...)
 	end
 end
 
-UnitPopupButtons=UnitPopupButtons or {}
-UnitPopupMenus=UnitPopupMenus or {}
-
 local function Hook(source,target,secure)
 	-- MoP Classic: skip hooking UnitPopup_* entirely; its implementation differs from modern retail
 	if source=="UnitPopup_ShowMenu" or source=="UnitPopup_OnClick" or source=="UnitPopup_HideButtons" then
@@ -83,20 +80,75 @@ local FriendRequestString=string.sub(FRIEND_REQUESTS,1,-6)
 local OPEN_DROPDOWNMENUS_SAVE=nil
 local friend_popup_menus={"FRIEND","FRIEND_OFFLINE","BN_FRIEND","BN_FRIEND_OFFLINE"}
 
--- MoP Classic: UnitPopupButtons/UnitPopupMenus may not exist or may be unused for friends.
--- Only define our custom entries if Blizzard has actually created these tables.
+-- Dropdown integration disabled on MoP Classic to avoid tainting secure menus.
+--[[
 if type(UnitPopupButtons)=="table" and type(UnitPopupMenus)=="table" then
-	UnitPopupButtons["FRIEND_GROUP_NEW"]={text="Create new group"}
-	UnitPopupButtons["FRIEND_GROUP_ADD"]={text="Add to group",nested=1}
-	UnitPopupButtons["FRIEND_GROUP_DEL"]={text="Remove from group",nested=1}
-	UnitPopupMenus["FRIEND_GROUP_ADD"]={}
-	UnitPopupMenus["FRIEND_GROUP_DEL"]={}
+    UnitPopupButtons["FRIEND_GROUP_NEW"]={text="Create new group"}
+    UnitPopupButtons["FRIEND_GROUP_ADD"]={text="Add to group",nested=1}
+    UnitPopupButtons["FRIEND_GROUP_DEL"]={text="Remove from group",nested=1}
+    UnitPopupMenus["FRIEND_GROUP_ADD"]={}
+    UnitPopupMenus["FRIEND_GROUP_DEL"]={}
 end
+]]
+
 
 local currentExpansionMaxLevel=90 -- MoP Classic cap
 if type(GetMaxPlayerLevel)=="function" then
 	currentExpansionMaxLevel=GetMaxPlayerLevel()
 end
+
+-------------------------------------------------
+-- SocialPlus simple search
+-------------------------------------------------
+local SP_SearchBox
+local SP_SearchTerm=nil  -- always lowercase or nil
+
+local function SP_CreateSearchBox()
+	if SP_SearchBox or not FriendsFrame then return end
+
+	SP_SearchBox=CreateFrame("EditBox","SocialPlusSearchBox",FriendsFrame,"SearchBoxTemplate")
+	SP_SearchBox:SetAutoFocus(false)
+
+	-- Fixed, visible position near top-right
+	SP_SearchBox:SetSize(170,20)
+	SP_SearchBox:SetPoint("TOPRIGHT",FriendsFrame,"TOPRIGHT",-8,-63)
+
+	SP_SearchBox.Instructions:SetText(SEARCH or "Search")
+
+	local font,size,flags=SP_SearchBox:GetFont()
+	SP_SearchBox:SetFont(font,size,flags)
+	SP_SearchBox:SetTextColor(1,1,1)
+	SP_SearchBox.Instructions:SetTextColor(0.8,0.8,0.8)
+
+	SP_SearchBox:SetScript("OnTextChanged",function(self)
+		SearchBoxTemplate_OnTextChanged(self)
+		local txt=self:GetText() or ""
+		txt=txt:match("^%s*(.-)%s*$") or ""
+		if txt=="" then
+			SP_SearchTerm=nil
+		else
+			SP_SearchTerm=string.lower(txt)
+		end
+		FriendsList_Update()
+	end)
+
+	SP_SearchBox:SetScript("OnEscapePressed",function(self)
+		self:SetText("")
+		self:ClearFocus()
+		SP_SearchTerm=nil
+		FriendsList_Update()
+	end)
+end
+
+-- Ensure it’s created when the UI is ready
+local SP_SearchFrame=CreateFrame("Frame")
+SP_SearchFrame:RegisterEvent("PLAYER_LOGIN")
+SP_SearchFrame:RegisterEvent("ADDON_LOADED")
+SP_SearchFrame:SetScript("OnEvent",function(_,event,addon)
+	if event=="PLAYER_LOGIN" or addon=="Blizzard_FriendsFrame" then
+		SP_CreateSearchBox()
+	end
+end)
 
 -- [[ Faction + BNet/WoW icon helpers ]]
 
@@ -556,7 +608,7 @@ local function SocialPlus_UpdateFriendButton(button)
 	local height=FRIENDS_BUTTON_HEIGHTS[button.buttonType]
 	local nameText,nameColor,infoText,broadcastText,isFavoriteFriend
 	local hasTravelPassButton=false
-
+    local searchBlob="" -- text we will search in for this row
 	-- Clear per-button friend metadata (used by custom menu)
 	button.rawName=nil
 	button.accountName=nil
@@ -633,6 +685,14 @@ local function SocialPlus_UpdateFriendButton(button)
 
 		infoText=(info and info.mobile) and LOCATION_MOBILE_APP or (info and info.area) or infoText
 
+		-- Build a searchable blob for this row
+		searchBlob=table.concat({
+			info and info.name or "",
+			info and info.area or "",
+			tostring(nameText or ""),
+			tostring(infoText or "")
+		}," ")
+
 		-- Store raw identifiers for whisper/invite
 		if info then
 			button.rawName=info.name
@@ -671,6 +731,17 @@ local function SocialPlus_UpdateFriendButton(button)
 			else
 				button.status:SetTexture(FRIENDS_TEXTURE_ONLINE)
 			end
+
+			-- Build a searchable blob for this BNet row
+     	  	searchBlob=table.concat({
+			accountName or "",
+			characterName or "",
+			realmName or "",
+			zoneName or "",
+			gameText or "",
+			tostring(nameText or ""),
+			tostring(infoText or "")
+    		}," ")
 
 			if client==BNET_CLIENT_WOW and wowProjectID==WOW_PROJECT_ID then
 				if not zoneName or zoneName=="" then
@@ -847,6 +918,7 @@ local function SocialPlus_UpdateFriendButton(button)
 		button:UnlockHighlight()
 	end
 
+	-- Search filtering
 	if nameText then
 		if button.buttonType~=FRIENDS_BUTTON_TYPE_DIVIDER then
 			if button["text"] then
@@ -871,6 +943,7 @@ local function SocialPlus_UpdateFriendButton(button)
 		button:Hide()
 	end
 
+	-- Tooltip handling	
 	if FriendsTooltip.button==button then
 		if FriendsFrameTooltip_Show then
 			FriendsFrameTooltip_Show(button)
@@ -889,7 +962,10 @@ local function SocialPlus_UpdateFriends()
 	local offset=HybridScrollFrame_GetOffset(scrollFrame)
 	local buttons=scrollFrame.buttons
 	local numButtons=#buttons
-	local numFriendButtons=FriendButtons.count
+	-- BEFORE:
+	-- local numFriendButtons=FriendButtons.count
+	-- AFTER:
+	local numFriendButtons=FriendButtons.count or 0
 	local usedHeight=0
 
 	scrollFrame.dividerPool:ReleaseAll()
@@ -1005,11 +1081,102 @@ local function SocialPlus_Update(forceUpdate)
 		return
 	end
 
+		-- >>> SIMPLE NAME-ONLY SEARCH MODE (no groups) <<<
+	if SP_SearchTerm then
+		wipe(FriendButtons)
+		wipe(GroupTotal)
+		wipe(GroupOnline)
+		wipe(GroupSorted)
+		GroupCount=0
+
+		local term=SP_SearchTerm -- already lowercased
+		local addButtonIndex=0
+		local totalButtonHeight=0
+
+		local function AddButtonInfo(buttonType,id)
+			addButtonIndex=addButtonIndex+1
+			if not FriendButtons[addButtonIndex] then
+				FriendButtons[addButtonIndex]={}
+			end
+			FriendButtons[addButtonIndex].buttonType=buttonType
+			FriendButtons[addButtonIndex].id=id
+			FriendButtons.count=addButtonIndex
+			totalButtonHeight=totalButtonHeight+FRIENDS_BUTTON_HEIGHTS[buttonType]
+		end
+
+		local function startsWith(haystack,needle)
+			if not haystack or haystack=="" or not needle or needle=="" then
+				return false
+			end
+			return haystack:sub(1,#needle)==needle
+		end
+
+		local function firstWord(s)
+			if not s or s=="" then return "" end
+			return (s:match("^(%S+)")) or ""
+		end
+
+		-- BNet friends: try BattleTag first, then accountName, then character name
+		for i=1,numBNetTotal do
+			local accountName,characterName,_,_,_,isOnline=
+				GetFriendInfoById(i)
+
+			if not(SocialPlus_SavedVars and SocialPlus_SavedVars.hide_offline and not isOnline) then
+				local battleTag=nil
+
+				-- Try to grab the real BattleTag from C_BattleNet if it exists
+				if C_BattleNet and C_BattleNet.GetFriendAccountInfo then
+					local acct=C_BattleNet.GetFriendAccountInfo(i)
+					if acct then
+						battleTag=acct.battleTag or acct.accountName
+					end
+				end
+
+				local primaryName=battleTag
+					or accountName
+					or characterName
+					or ""
+
+				primaryName=primaryName:lower()
+				local first=primaryName:match("^(%S+)") or primaryName
+
+				if first:sub(1,#term)==term then
+					AddButtonInfo(FRIENDS_BUTTON_TYPE_BNET,i)
+				end
+			end
+		end
+
+		-- WoW friends: character name
+		for i=1,numWoWTotal do
+			local fi=FG_GetFriendInfoByIndex(i)
+			local name=fi and fi.name or nil
+			local connected=fi and fi.connected or false
+
+			if SocialPlus_SavedVars and SocialPlus_SavedVars.hide_offline and not connected then
+				-- skip offline if setting says so
+			elseif name and name~="" then
+				local searchName=firstWord(name):lower()
+				if startsWith(searchName,term) then
+					AddButtonInfo(FRIENDS_BUTTON_TYPE_WOW,i)
+				end
+			end
+		end
+
+		FriendsScrollFrame.totalFriendListEntriesHeight=totalButtonHeight
+		FriendsScrollFrame.numFriendListEntries=addButtonIndex
+
+		SocialPlus_UpdateFriends()
+		return
+	end
+	-- <<< END SEARCH MODE >>>
+
+	-- normal grouped mode below
 	wipe(FriendButtons)
 	wipe(GroupTotal)
 	wipe(GroupOnline)
 	wipe(GroupSorted)
 	GroupCount=0
+
 
 	local BnetSocialPlus={}
 	local WowSocialPlus={}
@@ -2174,10 +2341,11 @@ function SocialPlus_ModifyGroupFromDropdown(group,mode)
 	SocialPlus_Update()
 end
 
-StaticPopupDialogs=StaticPopupDialogs or {}
+if not StaticPopupDialogs then
+    StaticPopupDialogs={}
+end
 
 -- [[ BNet remove flows ]]
-
 local function SocialPlus_DoRemoveBNetFriend(data)
 	if not data then return end
 
