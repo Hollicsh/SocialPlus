@@ -1,3 +1,7 @@
+v1.0.7
+- Fixed inconsistent mousewheel scrolling on accounts with smaller friend lists.
+- Added minimum scroll-step logic to ensure smooth scrolling across all regions.
+
 v1.0.6 – SocialPlus Friends Overhaul
 
 • ✨ New accent-insensitive search bar

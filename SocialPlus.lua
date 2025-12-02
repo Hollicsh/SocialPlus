@@ -475,7 +475,13 @@ function SP_InitSmoothScroll()
 		local range=max-min
 
 		-- Adaptive step: about 8–10 wheel ticks from top to bottom
-		local baseStep=(range>0) and (range/14) or 40
+		local baseStep
+		if range <= 400 then
+  		  baseStep = 50      -- small list → give it a real step
+		else
+ 		 baseStep = range/14
+		end
+
 
 		local target=current-delta*baseStep
 		if target<min then target=min end
