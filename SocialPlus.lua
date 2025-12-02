@@ -68,7 +68,7 @@ do
         L.INVITE_REASON_NOT_WOW       = "Cet ami n’est pas actuellement dans World of Warcraft."
         L.INVITE_REASON_WRONG_PROJECT = "Cet ami n’est pas sur votre version de WoW."
         L.INVITE_REASON_NO_REALM      = "Vous ne pouvez pas inviter cet ami car son royaume n’est pas disponible (probablement une autre région)."
-        L.CONFIRM_REMOVE_BNET_TEXT = "Êtes-vous sûr de vouloir retirer "%s" ?\n\nTapez "OUI." pour confirmer."
+        L.CONFIRM_REMOVE_BNET_TEXT = 'Êtes-vous sûr de vouloir retirer "%s" ?\n\nTapez "OUI." pour confirmer.'
 		L.CONFIRM_REMOVE_BNET_WORD = "OUI."
         L.MSG_REMOVE_FRIEND_SUCCESS = "Suppression de %s réussie."
         L.INVITE_GENERIC_FAIL = "Vous ne pouvez pas inviter cet ami."
@@ -198,7 +198,7 @@ if locale == "ruRU" then
         L.INVITE_REASON_NOT_WOW       = "This friend is not currently in World of Warcraft."
         L.INVITE_REASON_WRONG_PROJECT = "This friend is not on your WoW version."
         L.INVITE_REASON_NO_REALM      = "You cannot invite this friend because their realm is not available (likely another region)."
- 		L.CONFIRM_REMOVE_BNET_TEXT = "Are you sure you want to remove "%s"?\n\nType "YES." to confirm."
+ 		L.CONFIRM_REMOVE_BNET_TEXT = 'Are you sure you want to remove "%s"?\n\nType "YES." to confirm.'
 		L.CONFIRM_REMOVE_BNET_WORD = "YES."
         L.MSG_REMOVE_FRIEND_SUCCESS = "Successfully deleted %s."
         L.INVITE_GENERIC_FAIL = "You cannot invite this friend."
